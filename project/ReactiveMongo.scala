@@ -45,7 +45,7 @@ object Publish {
     pomIncludeRepository := { _ => false },
     licenses := Seq("Apache 2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
     homepage := Some(url("http://reactivemongo.org")),
-    pomExtra := (
+    pomExtra :=
       <scm>
         <url>git://github.com/ReactiveMongo/ReactiveMongo.git</url>
         <connection>scm:git://github.com/ReactiveMongo/ReactiveMongo.git</connection>
@@ -56,7 +56,7 @@ object Publish {
           <name>Stephane Godbillon</name>
           <url>http://stephane.godbillon.com</url>
         </developer>
-      </developers>))
+      </developers>)
 }
 
 object Format {
