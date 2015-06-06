@@ -115,8 +115,12 @@ trait GenericDB[P <: SerializationPack with Singleton] { self: DB =>
 trait DBMetaCommands {
   self: DB =>
 
-  import reactivemongo.api.commands.{ Command, DropDatabase }
+  import reactivemongo.core.protocol.MongoWireVersion
+  import reactivemongo.api.commands.{
+    Command, DropDatabase, ListCollectionNames
+  }
   import reactivemongo.api.commands.bson.{ CommonImplicits, BSONDropDatabaseImplicits }
+  import reactivemongo.api.commands.bson.BSONListCollectionNamesImplicits._
   import CommonImplicits._
   import BSONDropDatabaseImplicits._
 
@@ -125,7 +129,7 @@ trait DBMetaCommands {
     Command.run(BSONSerializationPack).unboxed(self, DropDatabase)
 
   /** Returns an index manager for this database. */
-  def indexesManager(implicit ec: ExecutionContext) = new IndexesManager(self)
+  def indexesManager(implicit ec: ExecutionContext) = IndexesManager(self)
 
   private lazy val collectionNameReader =
     new BSONDocumentReader[String] {
@@ -140,12 +144,15 @@ trait DBMetaCommands {
 
   /** Returns the names of the collections in this database. */
   def collectionNames(implicit ec: ExecutionContext): Future[List[String]] = {
-    collection("system.namespaces").as[BSONCollection]()
+    val wireVer = connection.metadata.map(_.maxWireVersion)
+
+    if (wireVer.exists(_ == MongoWireVersion.V30)) {
+      Command.run(BSONSerializationPack)(self, ListCollectionNames).map(_.names)
+    } else collection("system.namespaces").as[BSONCollection]()
       .find(BSONDocument(
         "name" -> BSONRegex("^[^\\$]+$", "") // strip off any indexes
-        ))
-      .cursor(collectionNameReader, ec)
-      .collect[List]()
+      )).cursor(collectionNameReader, ec, CursorProducer.defaultCursorProducer).
+      collect[List]()
   }
 
 /* // TODO
@@ -164,9 +171,11 @@ case class DefaultDB(
   name: String,
   connection: MongoConnection,
   failoverStrategy: FailoverStrategy = FailoverStrategy()) extends DB with DBMetaCommands with GenericDB[BSONSerializationPack.type] {
+
   val pack: BSONSerializationPack.type = BSONSerializationPack
 }
 
 object DB {
   def apply(name: String, connection: MongoConnection, failoverStrategy: FailoverStrategy = FailoverStrategy()) = DefaultDB(name, connection, failoverStrategy)
+
 }

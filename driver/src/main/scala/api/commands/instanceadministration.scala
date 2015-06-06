@@ -35,10 +35,10 @@ case class CollStats(scale: Option[Int] = None) extends CollectionCommand with C
  * @param size The size in bytes (or in bytes / scale, if any).
  * @param averageObjectSize The average object size in bytes (or in bytes / scale, if any).
  * @param storageSize Preallocated space for the collection.
- * @param numExtents Number of extents (contiguously allocated chunks of datafile space).
+ * @param numExtents Number of extents (contiguously allocated chunks of datafile space, only for mmapv1 storage engine).
  * @param nindexes Number of indexes.
- * @param lastExtentSize Size of the most recently created extent.
- * @param paddingFactor Padding can speed up updates if documents grow.
+ * @param lastExtentSize Size of the most recently created extent (only for mmapv1 storage engine).
+ * @param paddingFactor Padding can speed up updates if documents grow (only for mmapv1 storage engine).
  * @param systemFlags System flags.
  * @param userFlags User flags.
  * @param indexSizes Size of specific indexes in bytes.
@@ -51,10 +51,10 @@ case class CollStatsResult(
   size: Double,
   averageObjectSize: Option[Double],
   storageSize: Double,
-  numExtents: Int,
+  numExtents: Option[Int],
   nindexes: Int,
-  lastExtentSize: Int,
-  paddingFactor: Double,
+  lastExtentSize: Option[Int],
+  paddingFactor: Option[Double],
   systemFlags: Option[Int],
   userFlags: Option[Int],
   totalIndexSize: Int,
@@ -65,3 +65,27 @@ case class CollStatsResult(
 case class DropIndexes(index: String) extends CollectionCommand with CommandWithResult[DropIndexesResult]
 
 case class DropIndexesResult(value: Int) extends BoxedAnyVal[Int]
+
+case class CollectionNames(names: List[String])
+
+/** List the names of DB collections. */
+object ListCollectionNames extends Command with CommandWithResult[CollectionNames]
+
+import reactivemongo.api.indexes.Index
+
+/**
+ * Lists the indexes of the specified collection.
+ * 
+ * @param db the database name
+ */
+case class ListIndexes(db: String) extends CollectionCommand
+    with CommandWithResult[List[Index]]
+
+/**
+ * Creates the given indexes on the specified collection.
+ * 
+ * @param db the database name
+ * @param indexes the indexes to be created
+ */
+case class CreateIndexes(db: String, indexes: List[Index])
+    extends CollectionCommand with CommandWithResult[WriteResult]

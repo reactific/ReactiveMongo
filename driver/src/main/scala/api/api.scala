@@ -424,6 +424,8 @@ object MongoConnection {
         kv match {
           case ("authSource", v)           => unsupportedKeys -> result.copy(authSource = Some(v))
           case ("connectTimeoutMS", v)     => unsupportedKeys -> result.copy(connectTimeoutMS = v.toInt)
+          case ("sslEnabled", v)           => unsupportedKeys -> result.copy(sslEnabled = v.toBoolean)
+          case ("sslAllowsInvalidCert", v) => unsupportedKeys -> result.copy(sslAllowsInvalidCert = v.toBoolean)            
 
           case ("rm.tcpNoDelay", v)        => unsupportedKeys -> result.copy(tcpNoDelay = v.toBoolean)
           case ("rm.keepAlive", v)         => unsupportedKeys -> result.copy(keepAlive = v.toBoolean)
@@ -460,8 +462,10 @@ object MongoConnection {
  *
  * @param connectTimeoutMS The number of milliseconds to wait for a connection to be established before giving up.
  * @param authSource The database source for authentication credentials.
- * @param tcpNoDelay TCPNoDelay flag (ReactiveMongo-specific option).
- * @param keepAlive TCP KeepAlive flag (ReactiveMongo-specific option).
+ * @param sslEnabled Enable SSL connection (required to be accepted on server-side).
+ * @param sslAllowsInvalidCert If `sslEnabled` is true, this one indicates whether to accept invalid certificates (e.g. self-signed).
+ * @param tcpNoDelay TCPNoDelay flag (ReactiveMongo-specific option). The default value is false (see [[java.net.StandardSocketOptions#TCP_NODELAY]]).
+ * @param keepAlive TCP KeepAlive flag (ReactiveMongo-specific option). The default value is false (see [[java.net.StandardSocketOptions#SO_KEEPALIVE]]).
  * @param nbChannelsPerNode Number of channels (connections) per node (ReactiveMongo-specific option).
  */
 case class MongoConnectionOptions(
@@ -469,10 +473,12 @@ case class MongoConnectionOptions(
   connectTimeoutMS: Int = 0,
   // canonical options - authentication options
   authSource: Option[String] = None,
+  sslEnabled: Boolean = false,
+  sslAllowsInvalidCert: Boolean = false,
 
   // reactivemongo specific options
-  tcpNoDelay: Boolean = true,
-  keepAlive: Boolean = true,
+  tcpNoDelay: Boolean = false,
+  keepAlive: Boolean = false,
   nbChannelsPerNode: Int = 10
 )
 
@@ -529,9 +535,8 @@ class MongoDriver(config: Option[Config] = None) {
       case Some(nm) => system.actorOf(props, nm);
       case None => system.actorOf(props, "Connection-" +  + MongoDriver.nextCounter)
     }
-    implicit val timeout: Timeout = Timeout(10, TimeUnit.SECONDS)
-    val connection = Await.result(supervisorActor ? AddConnection(options, mongosystem), Duration.Inf)
-    connection.asInstanceOf[MongoConnection]
+    val connection = (supervisorActor ? AddConnection(options, mongosystem))(Timeout(10, TimeUnit.SECONDS))
+    Await.result(connection.mapTo[MongoConnection], Duration.Inf)
   }
 
   /**
@@ -574,7 +579,6 @@ class MongoDriver(config: Option[Config] = None) {
   private case class CloseWithTimeout(timeout: FiniteDuration)
 
   private case class SupervisorActor(driver: MongoDriver) extends Actor {
-    import MongoDriver.logger
 
     def isEmpty = driver.connectionMonitors.isEmpty
 
@@ -630,5 +634,5 @@ object MongoDriver {
   def apply(config: Config) = new MongoDriver(Some(config))
 
   private[api] val _counter = new AtomicLong(0)
-  def nextCounter : Long = _counter.incrementAndGet()
+  private[api] def nextCounter : Long = _counter.incrementAndGet()
 }
